@@ -398,9 +398,9 @@ function handleAnswer(choiceIndex) {
     wrongCount++;
     feedbackEl.classList.add("bad");
 
-    // ❌ Fel + rätt svar
+    // ❌ Fel (visa inte rätt svar)
     const title = document.createElement("div");
-    title.innerHTML = `❌ Fel. Rätt svar: <strong>${correctTxt}</strong>`;
+    title.textContent = "❌ Fel.";
     feedbackEl.appendChild(title);
 
     // ✅ Feedback visas ENDAST vid fel (om du fyllt i den)
