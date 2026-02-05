@@ -1,0 +1,959 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>Prov – Frågebank</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    body { margin: 0; background: #0b0c10; color: #eaeaea; }
+    .wrap { max-width: 920px; margin: 0 auto; padding: 20px; }
+    .card { background: #12141b; border: 1px solid #24283a; border-radius: 16px; padding: 18px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+    h1 { font-size: 20px; margin: 0 0 10px; }
+    .muted { color: #a8b0c0; font-size: 14px; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    .spacer { flex: 1; }
+    .pill { font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid #24283a; background: #0f1220; color: #a8b0c0; }
+    .progress { height: 10px; background: #0f1220; border: 1px solid #24283a; border-radius: 999px; overflow: hidden; }
+    .bar { height: 100%; width: 0%; background: #3b82f6; }
+    .q { font-size: 18px; margin: 14px 0 10px; line-height: 1.35; }
+    .choices { display: grid; gap: 10px; margin: 10px 0 0; }
+    .choice {
+      width: 100%;
+      text-align: left;
+      padding: 12px 12px;
+      border-radius: 12px;
+      background: #0f1220;
+      border: 1px solid #24283a;
+      color: #eaeaea;
+      cursor: pointer;
+    }
+    .choice:hover { border-color: #3b82f6; }
+    .choice[disabled] { opacity: .75; cursor: not-allowed; }
+    .feedback { margin-top: 12px; padding: 12px; border-radius: 12px; border: 1px solid #24283a; background: #0f1220; display: none; line-height: 1.4; }
+    .ok { border-color: #16a34a; }
+    .bad { border-color: #ef4444; }
+    .warn { border-color: #f59e0b; }
+    .btn { padding: 10px 14px; border-radius: 12px; border: 1px solid #24283a; background: #0f1220; color: #eaeaea; cursor: pointer; }
+    .btn.primary { background: #1b2b5a; border-color: #3b82f6; }
+    .btn[disabled] { opacity: .6; cursor: not-allowed; }
+    input[type="text"]{
+      width: 100%;
+      margin-top: 8px;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid #24283a;
+      background: #0f1220;
+      color: #eaeaea;
+      font-size: 16px;
+      box-sizing: border-box;
+    }
+    .resultGrid { display: grid; gap: 10px; margin-top: 14px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+    .resultItem { padding: 12px; border: 1px solid #24283a; border-radius: 12px; background: #0f1220; }
+    .big { font-size: 28px; font-weight: 700; }
+    .small { font-size: 13px; color: #a8b0c0; }
+
+    .imgCard { margin-top: 12px; border:1px solid #24283a; border-radius:12px; background:#0f1220; padding: 12px; }
+    .imgCard img { width: 100%; max-width: 820px; border-radius: 12px; display:block; }
+
+    /* NYTT: fritext vid fel */
+    .noteWrap { margin-top: 10px; }
+    .noteLabel { display:block; margin-top: 10px; color:#a8b0c0; font-size: 14px; }
+    .noteHint { color:#a8b0c0; font-size: 12px; margin-top: 6px; }
+
+    /* NYTT: lista fel med detaljer */
+    .wrongList { margin-top: 14px; display: grid; gap: 10px; }
+    .wrongItem { padding: 12px; border: 1px solid #24283a; border-radius: 12px; background: #0f1220; }
+    .wrongTitle { font-weight: 700; margin-bottom: 6px; }
+    .wrongMeta { color:#a8b0c0; font-size: 13px; margin-top: 6px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+  </style>
+</head>
+
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="row">
+      <h1 id="title">Prov</h1>
+      <div class="spacer"></div>
+      <span class="pill" id="counter">0 / 0</span>
+    </div>
+
+    <div class="progress"><div class="bar" id="bar"></div></div>
+
+    <div class="q" id="questionText"></div>
+    <div class="choices" id="choices"></div>
+    <div class="feedback" id="feedback"></div>
+
+    <div class="row" style="margin-top: 14px;">
+      <button class="btn" id="restartBtn" type="button" style="display:none;">Starta om</button>
+      <div class="spacer"></div>
+      <button class="btn primary" id="nextBtn" type="button" disabled>Nästa</button>
+    </div>
+
+    <div class="muted" style="margin-top: 10px;" id="footerHint"></div>
+  </div>
+</div>
+
+<script>
+/*****************************************************************
+ * KONFIG (ENBART LOKALT – inget skickas någonstans)
+ *****************************************************************/
+const TOTAL_QUESTIONS = 25;
+const PASS_PERCENT = 70;
+const PASS_REQUIRED = (total) => Math.ceil((PASS_PERCENT/100) * total);
+const TODAY_SV = () => new Date().toLocaleDateString("sv-SE");
+
+/*****************************************************************
+ * HJÄLPFUNKTIONER
+ *****************************************************************/
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function validateCorrectIndex(q) {
+  return Number.isInteger(q.correctIndex) && q.correctIndex >= 0 && q.correctIndex <= 3;
+}
+
+function pickRandomQuestions(bank, n) {
+  if (bank.length < n) throw new Error(`Frågebanken (${bank.length}) är mindre än n (${n}).`);
+  const copy = bank.slice();
+  shuffle(copy);
+  return copy.slice(0, n);
+}
+
+/*****************************************************************
+ * FRÅGEBANK (55 frågor)
+ *****************************************************************/
+const QUESTION_BANK = [
+  {
+    id: "Q001",
+    text: "När kom den första ”skyddslagen” till skydd för militära anläggningar mot t.ex. spioneri?",
+    choices: ["2010", "1913", "1940", "1990"],
+    correctIndex: 1,
+  },
+  {
+    id: "Q002",
+    text: "Hur många avdelningar innehåller den s.k. brottskatalogen i Brottsbalken?",
+    choices: ["4", "6", "3", "5"],
+    correctIndex: 0,
+  },
+  {
+    id: "Q003",
+    text: "Vilken titel har chefen för en Tingsrätt?",
+    choices: ["Rådman", "Nämndeman", "Hovrättsråd", "Lagman"],
+    correctIndex: 3,
+  },
+  {
+    id: "Q004",
+    text: "I vilken ordning kommer de allmänna domstolar som dömer i bl.a. brottmål?",
+    choices: [
+      "Kämnärsrätt, Förvaltningsrätt, Europadomstolen",
+      "Polisrätt, Polisöverrätt, Regeringsrätten",
+      "Tingsrätt, Hovrätt, Högsta domstolen",
+      "Förvaltningsrätt, Kammarrätt, Högsta förvaltningsdomstolen",
+    ],
+    correctIndex: 2,
+  },
+  {
+    id: "Q005",
+    text: "Hur lång tid kan Försvarsmakten besluta om tillfälliga skyddsobjekt innan Länsstyrelsen måste ta över det?",
+    choices: ["3 dagar", "Det finns ingen gräns", "Länsstyrelsen måste besluta från dag 1", "30 dagar"],
+    correctIndex: 3,
+  },
+  {
+    id: "Q006",
+    text: "Vem beslutade om att något skulle vara skyddsföremål i 1940 års lag?",
+    choices: [
+      "Försvarsområdesbefälhavaren",
+      "Regementschefen",
+      "Högste militäre befallningshavare på platsen",
+      "Militärområdesbefälhavaren",
+    ],
+    correctIndex: 2,
+  },
+  {
+    id: "Q007",
+    text: "Vilket är det senaste brottet som tillförts skyddslagens 1§?",
+    choices: ["Spioneri", "Grovt rån", "Obehörigt tillträde till skyddsobjekt", "Terroristbrott"],
+    correctIndex: 1,
+  },
+  {
+    id: "Q008",
+    text: "Vem förundersökningsleder normalt brott mot en speciallag, som skyddslagen?",
+    choices: ["Polisen", "Rådmannen", "Lagmannen", "Åklagaren"],
+    correctIndex: 3,
+  },
+  {
+    id: "Q009",
+    text: "Vilka länders soldater och sjömän kan, med lagstöd bevaka skyddsobjekt?",
+    choices: ["USA och Finland", "Endast Finland", "Endast USA", "Alla medlemsstater i NATO"],
+    correctIndex: 0,
+  },
+  {
+    id: "Q010",
+    text: "Kan en Portugisisk jagare (örlogsfartyg) förklara som skyddsobjekt?",
+    choices: ["Ja, men bara i krig", "Nej, det kan bara jagare från USA och Finland", "Ja, alltid", "Nej, eftersom hon inte kan bevakas av skyddsvakter från Portugal"],
+    correctIndex: 2,
+  },
+  {
+    id: "Q011",
+    text: "Vem bestämmer om hur en civil skyddsvakt ska utbildas?",
+    choices: [
+      "Bevakningsbranschens yrkes- och arbetsmiljöråd",
+      "Varje länsstyrelse",
+      "Polismyndigheten",
+      "Försvarsmakten",
+    ],
+    correctIndex: 2,
+  },
+  {
+    id: "Q012",
+    text: "När var Försvarsmakten tvungen att börja utbilda skyddsvakter?",
+    choices: [
+      "Efter skyddslagen 1990",
+      "Efter skyddslagen 2010",
+      "Efter brottsbalken kom 1962",
+      "Efter duellen mellan polis och hemvärn i Malmköping 1979",
+    ],
+    correctIndex: 0,
+  },
+  {
+    id: "Q013",
+    text: "Var bestäms hur en amerikansk soldat ska utbildas för att få bevaka ett skyddsobjekt?",
+    choices: [
+      "I Försvarsmaktens arbetsordning",
+      "Ingenstans, eftersom de inte är skyddsvakter",
+      "I skyddsförordningen (2010:523)",
+      "I DCA-avtalet",
+    ],
+    correctIndex: 1,
+  },
+  {
+    id: "Q014",
+    text: "Har en amerikansk soldat som bevakar ett skyddsobjekt lagstöd för att kroppsvisitera någon?",
+    choices: [
+      "Ja, enligt skyddslagens 11§",
+      "Ja, enligt polislagens 19§, 1 st.",
+      "Nej, eftersom de inte är skyddsvakter",
+      "Ja, enligt både skyddslagen § 11 och polislagen § 19, 1 st.",
+    ],
+    correctIndex: 3,
+  },
+  {
+    id: "Q015",
+    text: "När blev obehörigt tillträde till skyddsobjekt ett självständigt brott?",
+    choices: [
+      "17 maj 1990, när ny skyddslag beslutades",
+      "15 augusti 2024, när skyddslagen reviderades",
+      "1 juli 2018, när skyddslagen reviderades",
+      "17 maj 1940, då ny skyddslag beslutades",
+    ],
+    correctIndex: 2,
+  },
+  {
+    id: "Q016",
+    text: "När gick U-137 på grund i Karlskrona skärgård:",
+    choices: ["27 oktober 1981", "9 april 1940", "11 september 2001", "2 augusti 1990"],
+    correctIndex: 0,
+  },
+  {
+    id: "Q017",
+    text: "Vilka civila skyddsobjekt bevakar Försvarsmakten varje dag?",
+    choices: [
+      "FRA på Lovön och Stockholms slott",
+      "Stockholms slott och Riddarholmskyrkan",
+      "Stockholms slott, Drottningholms slott och Solliden på Öland",
+      "Stockholms slott och Drottningholms slott",
+    ],
+    correctIndex: 3,
+  },
+  {
+    id: "Q018",
+    text: "I vilket kapitel i brottsbalken hittar du brottet spioneri?",
+    choices: ["8. kapitlet", "19. kapitlet", "3. kapitlet", "12. kapitlet"],
+    correctIndex: 1,
+  },
+  {
+    id: "Q019",
+    text: "Vad är ett viktigt rekvisit för att en gärning ska bedömas vara spioneri?",
+    choices: [
+      "Att man stjäl känsliga uppgifter",
+      "Att man röjer känsliga uppgifter",
+      "Att man lämnar uppgifter till främmande makt",
+      "Att man är vårdslös med känsliga uppgifter",
+    ],
+    correctIndex: 2,
+  },
+  {
+    id: "Q020",
+    text: "Vad avgör hur mycket tid åklagare har på sig för att lämna in en häktningsframställan?",
+    choices: [
+      "Tiden börjar räknas vid den tidpunkt då skyddsvakten omhändertagit eller gripit någon",
+      "Tiden börjar räknas vid den tidpunkt då skyddsvakten har tagit ett beslag",
+      "Tiden börjar räknas vid den tidpunkt då skyddsvakten lämnat över en frihetsberövad person till polisen",
+      "Tiden börjar räknas vid den tidpunkt då skyddsvakten rapporterat om sitt ingripande till högre chef",
+    ],
+    correctIndex: 0,
+  },
+  {
+    id: "Q021",
+    text: "När ska åklagaren senast lämna in en häktningsframställan?",
+    choices: [
+      "Senast kl 12:00 den tredje dagen efter frihetsberövandet",
+      "Efter max 72 timmar från det att polisen tagit över ansvaret",
+      "Inom 96 timmar",
+      "Senast kl 18:00 den tredje dagen efter frihetsberövandet",
+    ],
+    correctIndex: 0,
+  },
+  {
+    id: "Q022",
+    text: "Hur länge kan den som är skäligen misstänkt för brott sitta häktad innan ett nytt beslut måste fattas?",
+    choices: ["2 veckor", "1 vecka", "96 timmar", "72 timmar"],
+    correctIndex: 1,
+  },
+  {
+    id: "Q023",
+    text: "Vem bestämmer att skyddsvakten som ingripit ska vittna i en domstol?",
+    choices: [
+      "Tingsrätten",
+      "Förundersökningsledaren, åklagaren eller lagmannen",
+      "Lagmannen, åklagaren eller den misstänktes advokat",
+      "Åklagaren, den åtalade eller dennes försvarare",
+    ],
+    correctIndex: 3,
+  },
+  {
+    id: "Q024",
+    text: "Är du skyldig att vittna i domstol?",
+    choices: ["Ja, vi har allmän vittnesplikt", "Ja, men bara frivilligt", "Nej, det är upp till var och en", "Nej, inte om du inte sett något"],
+    correctIndex: 0,
+  },
+  {
+    id: "Q025",
+    text: "Vad betyder det att vara målsägande i ett brott?",
+    choices: ["Att du har begått ett brott", "Att du har drabbats av ett brott", "Att du misstänks för ett brott", "Att du bevittnat ett brott"],
+    correctIndex: 1,
+  },
+  {
+    id: "Q026",
+    text: "Vem beslutar om att den misstänkte ska få en offentlig försvarare?",
+    choices: ["Åklagaren", "Domstolen", "Polisen", "Advokatsamfundet"],
+    correctIndex: 1,
+  },
+  {
+    id: "Q027",
+    text: "Vad av nedan uppräknade begrepp är att betrakta som påföljd av ett brott?",
+    choices: [
+      "Parkeringsböter, övervakning och fängelse",
+      "Förverkad, sluten ungdomsvård och exekutiv auktion",
+      "Extratjänst, löneavdrag och böter",
+      "Böter, skyddstillsyn och fängelse",
+    ],
+    correctIndex: 3,
+  },
+  {
+    id: "Q028",
+    text: "Under en rättegång hör du åklagaren ställa frågor till den tilltalade. Vad betyder det?",
+    choices: [
+      "Att den åtalade får frågor",
+      "Att vittnet får frågor",
+      "Att den som drabbats av brottet får frågor",
+      "Att den som tilltalas av åklagaren får frågor",
+    ],
+    correctIndex: 0,
+  },
+  {
+    id: "Q029",
+    text: "Vad betyder ”retroaktivförbudet” i lagstiftningssammanhang?",
+    choices: [
+      "Om du begått brottet den 1 april, men lagen ändras den 1 juni och rättegången mot dig är den 1 augusti så får du dömas för brottet mot den nyare lagen",
+      "Om du begått brottet den 1 april, men lagen ändras den 1 juni och rättegången mot dig är den 1 augusti så måste du dömas för brottet mot den lagen som gällde den 1 april",
+      "Om du begått brottet den 1 april, men lagen ändras den 1 juni och rättegången mot dig är den 1 augusti så kan du inte dömas alls, eftersom lagen ändrats",
+      "Om du begått brottet den 1 april, men lagen ändras den 1 juni och rättegången mot dig är den 1 augusti så måste hela förundersökningen göras om eftersom lagen har ändrats",
+    ],
+    correctIndex: 1,
+  },
+  {
+    id: "Q030",
+    text: "Vad betyder ”obestämbarhetsförbudet” i lagstiftningssammanhang?",
+    choices: [
+      "Att lagen ska vara tydlig, begriplig och precis",
+      "Att lagen inte får bestämma vilket brott som har begåtts i förväg",
+      "Att lagen bara kan ändras om den inte ger vägledning",
+      "Att alla är lika inför lagen",
+    ],
+    correctIndex: 0,
+  },
+  {
+    id: "Q031",
+    text: "Vad menas med uttrycket ”strafflatitud”?",
+    choices: [
+      "Ju värre brott, desto strängare straff",
+      "Var brottet geografiskt har begåtts",
+      "Den undre och övre gränsen för straffpåföljd vid ett visst brott",
+      "Vem som ska straffas för vilket brott",
+    ],
+    correctIndex: 2,
+  },
+  {
+    id: "Q032",
+    text: "Vad av nedanstående skulle kunna karaktärisera ett objektivt rekvisit?",
+    choices: [
+      "En kofot som använts vid ett inbrott",
+      "Gärningsmannen har varit slarvig",
+      "Vad gärningsmannen kände vid brottstillfället",
+      "Jag ska kunna filma det",
+    ],
+    correctIndex: 3,
+  },
+  {
+    id: "Q033",
+    text: "Vad utmärker ett brott?",
+    choices: [
+      "Det är något som det är förbjudet att göra",
+      "Det är något som det är straffbart att göra",
+      "Det är något som du måste ha tillstånd att göra",
+      "Det är något som skadar andra",
+    ],
+    correctIndex: 1,
+  },
+  {
+    id: "Q034",
+    text: "Vad beskriver den tredje avdelningen i brottsbalken?",
+    choices: [
+      "Vilka olika brott som finns",
+      "Vilka olika domstolar som finns",
+      "Vilka olika påföljder som finns och vad dessa betyder",
+      "Vilka olika domstolar som är behöriga",
+    ],
+    correctIndex: 2,
+  },
+  {
+    id: "Q035",
+    text: "Vem beslutar om att en ny lag ska börja gälla?",
+    choices: ["Justitiedepartementet", "Riksdagen", "Kungen", "Regeringen"],
+    correctIndex: 1,
+  },
+  {
+    id: "Q036",
+    text: "Hur många ledamöter har Sveriges riksdag?",
+    choices: ["350", "351", "349", "271"],
+    correctIndex: 2,
+  },
+  {
+    id: "Q037",
+    text: "Vad står förkortningen SOU för i lagstiftningssammanhang?",
+    choices: [
+      "Statens ofantliga underskott",
+      "Statens offentliga utveckling",
+      "Statens offentliga utredningar",
+      "Statens ofantliga uttryck",
+    ],
+    correctIndex: 2,
+  },
+  {
+    id: "Q038",
+    text: "Vad utmärker Högsta domstolen?",
+    choices: [
+      "De bestämmer rättspraxis genom att skapa prejudicerande domar",
+      "Den består enbart av politisk tillsatta tjänstemän",
+      "Den finns på två platser; Stockholm och Bryssel",
+      "De är de enda i domstolsvärlden i Sverige som har tjänstedräkt",
+    ],
+    correctIndex: 0,
+  },
+  {
+    id: "Q039",
+    text: "Vem skriver ett utskottsbetänkande?",
+    choices: [
+      "Bara justitieutskottet",
+      "Något av regeringens departement",
+      "Något av riksdagens 15 utskott",
+      "Utrikesnämnden",
+    ],
+    correctIndex: 2,
+  },
+  {
+    id: "Q040",
+    text: "Vad kännetecknar det ackusatoriska processen?",
+    choices: [
+      "I domstolen har man en förhandling mellan åklagare och åtalad",
+      "I domstolen får endast rådmannen prata",
+      "Man spelar in allting på akustiska ljudband",
+      "Det är endast lekmannadomare som dömer i brottmål",
+    ],
+    correctIndex: 0,
+  },
+  {
+    id: "Q041",
+    text: "Var styrs inomverksutbildningen i Försvarsmakten?",
+    choices: [
+      "Handbok bevakning",
+      "Skyddsvaktsutbildning 2024",
+      "Reglemente utbildning",
+      "Handbok grund- och repetitionsutbildning",
+    ],
+    correctIndex: 2,
+  },
+  {
+    id: "Q042",
+    text: "Vad betyder förkortningen YBK i Försvarsmaktens utbildningssystem?",
+    choices: ["Yrkesbefälskurs", "Yrkes- och befattningskurs", "Yrkes- och bevakningskurs", "Ytterligare bevakningskurs"],
+    correctIndex: 1,
+  },
+  {
+    id: "Q043",
+    text: "Vad gör en kursarrangör?",
+    choices: [
+      "Kursarrangören ska genomföra utbildning enligt fastställd kursplan och enligt gällande styrningar",
+      "Kursarrangören ska ta fram och besluta om centrala kursplaner",
+      "Kursarrangören ska utse examinatorer",
+      "Kursarrangören ska validera andra utbildningar mot gällande kursplaner",
+    ],
+    correctIndex: 0,
+  },
+  {
+    id: "Q044",
+    text: "Vem är ansvarig för framtagande av kursplaner för utbildning av skyddsvakter inom Försvarsmakten?",
+    choices: [
+      "Arméstaben",
+      "Hemvärnets strids- och skjutskola",
+      "Försvarsmaktens underrättelse- och säkerhetscentrum",
+      "Försvarsstabens juridiska avdelning",
+    ],
+    correctIndex: 2,
+  },
+  {
+    id: "Q045",
+    text: "Du ska hålla en kurs för nya skyddsvakter vid ditt förband. Vem bereder kursbeskrivningen och vem fastställer den?",
+    choices: [
+      "Kursansvarig bereder, kursarrangören, d.v.s. C OrgE (förbandschefen) fastställer",
+      "Kurschef eller huvudläraren bereder, kursarrangören, d.v.s. C OrgE (förbandschefen) fastställer",
+      "Kurschef eller huvudläraren bereder, kursansvarig, d.v.s. arméstaben fastställer",
+      "Kurschef eller kursarrangör bereder, kursansvarig, d.v.s. C FMUndSäkC fastställer",
+    ],
+    correctIndex: 1,
+  },
+  {
+    id: "Q046",
+    text: "Vad tycker bäst beskriver en Skyddsvakt i Försvarsmakten av alternativen nedan?",
+    choices: [
+      "En obligatoriskt utbildad person som ska gå högvakt, oavsett befattning",
+      "Försvarsmaktens svar på ordningsvakten i det civila livet",
+      "Skyddsvakten är en tjänsteman som i sin befattning inom skydd- och bevakningsområdet företräder myndigheten i sin myndighetsutövning",
+      "Skyddsvakten är en person med rätt utbildning, på rätt plats som ska hålla ordning på våra soldater",
+    ],
+    correctIndex: 2,
+  },
+  {
+    id: "Q047",
+    text: "Vem fattar beslut om att använda tvångsmedel av nedanstående, och vad tycker du stämmer bäst av påståendena om utbildning?",
+    choices: [
+      "Det gör enskild skyddsvakt. Det är därför det är viktigt att ge alla en rättssäker utbildning",
+      "Det gör skyddsvaktens chef. Skyddsvakten behöver därför inte någon särskild juridisk skolning",
+      "Det gör vakthavande befäl. Bara en officer har rätt utbildning för att fatta korrekta juridiska beslut",
+      "Det gör förbandschefen. Endast en myndighetschef kan ges ansvaret att fatta juridiska beslut",
+    ],
+    correctIndex: 0,
+  },
+  {
+    id: "Q048",
+    text: "Vilka krav ställs det på en skyddsvaktsinstruktör?",
+    choices: [
+      "Att denne är rätt utrustad och har skyddsvaktsbevis",
+      "Att denne är utbildad och godkänd av polismyndigheten",
+      "Att denne är utbildad enligt en av C FMUndSäkC fastställd kursplan",
+      "Att denne har 15 högskolepoäng i juridik",
+    ],
+    correctIndex: 2,
+  },
+  {
+    id: "Q049",
+    text: "Vad ställs det för krav på en kursdeltagare för att bli antagen till skyddsvaktsinstruktörskursen ?",
+    choices: [
+      "Godkänd officers- eller specialistofficersutbildning",
+      "Godkänd grundkurs instruktör eller motsvarande kunskap i trupputbildning",
+      "Godkänd grundkurs i juridik",
+      "Godkänd utbildning i kursadministration",
+    ],
+    correctIndex: 1,
+  },
+  {
+    id: "Q050",
+    text: "Vem kvalitetssäkrar Försvarsmaktens inomverksutbildning?",
+    choices: ["Kursansvarig", "Kursarrangören", "Huvudläraren", "Förbandschefen"],
+    correctIndex: 0,
+  },
+  {
+    id: "Q051",
+    text: "Vilka betygsnivåer har examinationen i vår inomverksutbildning?",
+    choices: [
+      "Godkänd eller icke godkänd",
+      "Väl godkänd, godkänd och icke godkänd",
+      "Mycket väl godkänd, väl godkänd, godkänd och icke godkänd",
+      "Betyg 1-5 där 1 är underkänd",
+    ],
+    correctIndex: 0,
+  },
+  {
+    id: "Q052",
+    text: "Skyddsvakt grund har kurskoden UND424ISF45. Vad står den första fyran för?",
+    choices: ["Fördjupad kunskap", "Avancerad kunskap", "Specialiserad kunskap", "Grundkunskap"],
+    correctIndex: 0,
+  },
+  {
+    id: "Q053",
+    text: "Vad av nedan alternativ ska ingå i en kursplan?",
+    choices: [
+      "Kursens krigsförbandskod",
+      "Kursens förkunskapskrav",
+      "Kursens kostnad",
+      "Kursens stridskraftstillhörighet",
+    ],
+    correctIndex: 1,
+  },
+  {
+    id: "Q054",
+    text: "Vilket nedan är ett exempel på en kursplanerevidering?",
+    choices: [
+      "Kursen har nya lärandemål",
+      "Kursen har nya förkunskapskrav",
+      "Kursens examinationsform har ändrats",
+      "Kursen har fått ny kursansvarig",
+    ],
+    correctIndex: 2,
+  },
+  {
+    id: "Q055",
+    text: "Vad ska framgå av en kursbeskrivning?",
+    choices: [
+      "Hur kursen ska genomföras så att någon annan kan genomföra den om kurschefen blir sjuk",
+      "Vilka förkunskapskrav som krävs för att få hålla kursen, kopplat till kurschefens kompetens",
+      "Vem som genomfört kursrevideringen i den senaste ändringen",
+      "Ett beslut från kursansvarig om att få hålla kursen",
+    ],
+    correctIndex: 0,
+  },
+];
+
+/*****************************************************************
+ * UI + LOGIK
+ *****************************************************************/
+let examQuestions = [];
+let idx = -1;
+let answered = false;
+let correctCount = 0;
+let wrongCount = 0;
+let fullName = "";
+
+const userAnswerById = new Map(); // QID -> chosen index
+const noteById = new Map();       // QID -> fritext (bara vid fel)
+const isCorrectById = new Map();  // QID -> boolean
+
+const titleEl = document.getElementById("title");
+const counterEl = document.getElementById("counter");
+const barEl = document.getElementById("bar");
+const questionText = document.getElementById("questionText");
+const choicesEl = document.getElementById("choices");
+const feedbackEl = document.getElementById("feedback");
+const nextBtn = document.getElementById("nextBtn");
+const restartBtn = document.getElementById("restartBtn");
+const footerHint = document.getElementById("footerHint");
+
+function setProgress(i, total) {
+  const shown = Math.max(0, i + 1);
+  counterEl.textContent = `${Math.min(shown, total)} / ${total}`;
+  barEl.style.width = total ? `${(Math.min(shown, total)/total)*100}%` : "0%";
+}
+
+function resetFeedback() {
+  feedbackEl.style.display = "none";
+  feedbackEl.className = "feedback";
+  feedbackEl.textContent = "";
+}
+
+function lockChoices(lock) {
+  [...choicesEl.querySelectorAll("button.choice")].forEach(b => b.disabled = lock);
+}
+
+function renderStart() {
+  titleEl.textContent = "Prov – Start";
+
+  questionText.textContent = "Skriv ditt fullständiga namn och starta provet.";
+  footerHint.textContent = `25 frågor slumpas vid varje start. Godkänt: ${PASS_PERCENT}%.`;
+
+  choicesEl.innerHTML = `
+    <label class="muted" for="nameInput">Fullständigt namn</label>
+    <input id="nameInput" type="text" placeholder="Ex: Förnamn Efternamn" autocomplete="name" />
+    <div class="row" style="margin-top:12px;">
+      <button class="btn primary" id="startBtn" type="button" disabled>Starta prov</button>
+    </div>
+  `;
+
+  resetFeedback();
+  restartBtn.style.display = "none";
+  nextBtn.disabled = true;
+  counterEl.textContent = `0 / ${TOTAL_QUESTIONS}`;
+  barEl.style.width = "0%";
+
+  const nameInput = document.getElementById("nameInput");
+  const startBtn = document.getElementById("startBtn");
+
+  nameInput.addEventListener("input", () => {
+    fullName = nameInput.value.trim();
+    startBtn.disabled = fullName.length === 0;
+  });
+
+  startBtn.addEventListener("click", () => {
+    try {
+      // säkerställ att banken har korrekta correctIndex
+      const missing = QUESTION_BANK.find(q => !validateCorrectIndex(q));
+      if (missing) throw new Error(`Saknar/ogiltig correctIndex (0-3) för: ${missing.id}`);
+
+      // NYTT: välj 25 slumpfrågor och slumpa ordning
+      examQuestions = pickRandomQuestions(QUESTION_BANK, TOTAL_QUESTIONS);
+      shuffle(examQuestions);
+
+      // nollställ resultatdata
+      userAnswerById.clear();
+      noteById.clear();
+      isCorrectById.clear();
+
+      startExam();
+    } catch (e) {
+      feedbackEl.style.display = "block";
+      feedbackEl.classList.add("warn");
+      feedbackEl.textContent = `⚠️ ${e.message}`;
+    }
+  });
+}
+
+function startExam() {
+  idx = 0;
+  answered = false;
+  correctCount = 0;
+  wrongCount = 0;
+
+  restartBtn.style.display = "none";
+  nextBtn.disabled = true;
+  nextBtn.textContent = "Nästa";
+
+  renderQuestion(idx);
+}
+
+function renderQuestion(i) {
+  const q = examQuestions[i];
+  titleEl.textContent = "Fråga";
+  questionText.textContent = q.text;
+  footerHint.textContent = `Deltagare: ${fullName} • ${q.id}`;
+
+  choicesEl.innerHTML = "";
+  resetFeedback();
+
+  answered = false;
+  nextBtn.textContent = (i === examQuestions.length - 1) ? "Visa resultat" : "Nästa";
+  nextBtn.disabled = true;
+
+  q.choices.forEach((txt, ci) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "choice";
+    b.textContent = txt;
+    b.addEventListener("click", () => handleAnswer(ci));
+    choicesEl.appendChild(b);
+  });
+
+  setProgress(i, examQuestions.length);
+}
+
+function handleAnswer(choiceIndex) {
+  if (answered) return;
+  answered = true;
+
+  const q = examQuestions[idx];
+  const isCorrect = choiceIndex === q.correctIndex;
+
+  userAnswerById.set(q.id, choiceIndex);
+  isCorrectById.set(q.id, isCorrect);
+
+  lockChoices(true);
+  feedbackEl.style.display = "block";
+
+  if (isCorrect) {
+    correctCount++;
+    feedbackEl.classList.add("ok");
+    feedbackEl.textContent = "✅ Rätt!";
+  } else {
+    wrongCount++;
+    feedbackEl.classList.add("bad");
+    feedbackEl.textContent = "❌ Fel.";
+
+    // NYTT: fritextrad vid fel svar
+    const noteWrap = document.createElement("div");
+    noteWrap.className = "noteWrap";
+    noteWrap.innerHTML = `
+      <label class="noteLabel" for="noteInput">Fritext (t.ex. varför du valde svaret / vad du lärde dig):</label>
+      <input id="noteInput" type="text" placeholder="Skriv en kort kommentar..." />
+      <div class="noteHint">Denna text sparas bara lokalt i webbläsaren under provet (skickas inte).</div>
+    `;
+    feedbackEl.appendChild(noteWrap);
+
+    const noteInput = noteWrap.querySelector("#noteInput");
+    noteInput.addEventListener("input", () => {
+      noteById.set(q.id, noteInput.value.trim());
+    });
+    // fokus direkt så man kan skriva direkt
+    setTimeout(() => noteInput.focus(), 0);
+  }
+
+  nextBtn.disabled = false;
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.arcTo(x+w, y, x+w, y+h, r);
+  ctx.arcTo(x+w, y+h, x, y+h, r);
+  ctx.arcTo(x, y+h, x, y, r);
+  ctx.arcTo(x, y, x+w, y, r);
+  ctx.closePath();
+}
+
+async function renderResult() {
+  titleEl.textContent = "Resultat";
+  const total = examQuestions.length;
+  const pct = Math.round((correctCount / total) * 100);
+  const required = PASS_REQUIRED(total);
+  const passed = correctCount >= required;
+
+  questionText.textContent = "Sammanställning:";
+  footerHint.textContent = "";
+
+  // bygg fel-lista
+  const wrongItems = examQuestions
+    .filter(q => isCorrectById.get(q.id) === false)
+    .map(q => {
+      const userIdx = userAnswerById.get(q.id);
+      const userTxt = (Number.isInteger(userIdx) ? q.choices[userIdx] : "—");
+      const correctTxt = q.choices[q.correctIndex];
+      const note = noteById.get(q.id) || "";
+      return { q, userTxt, correctTxt, note };
+    });
+
+  const wrongHtml = wrongItems.length ? `
+    <div style="margin-top:14px;" class="muted">Fel frågor (med dina anteckningar):</div>
+    <div class="wrongList">
+      ${wrongItems.map((it, k) => `
+        <div class="wrongItem">
+          <div class="wrongTitle">${k+1}. <span class="mono">${it.q.id}</span> – ${it.q.text}</div>
+          <div class="wrongMeta">Ditt svar: <strong>${it.userTxt}</strong></div>
+          <div class="wrongMeta">Rätt svar: <strong>${it.correctTxt}</strong></div>
+          <div class="wrongMeta">Fritext: ${it.note ? `<strong>${it.note}</strong>` : `<span class="muted">—</span>`}</div>
+        </div>
+      `).join("")}
+    </div>
+  ` : `
+    <div style="margin-top:14px;" class="muted">Inga fel – snyggt!</div>
+  `;
+
+  choicesEl.innerHTML = `
+    <div class="resultGrid">
+      <div class="resultItem"><div class="big">${fullName}</div><div class="small">Namn</div></div>
+      <div class="resultItem"><div class="big">${correctCount} / ${total}</div><div class="small">Antal rätt</div></div>
+      <div class="resultItem"><div class="big">${pct}%</div><div class="small">Rättprocent</div></div>
+      <div class="resultItem"><div class="big">${TODAY_SV()}</div><div class="small">Datum</div></div>
+      <div class="resultItem" style="border-color:${passed ? "#16a34a" : "#ef4444"};">
+        <div class="big">${passed ? "GODKÄND" : "UNDERKÄND"}</div>
+        <div class="small">Krav: ${PASS_PERCENT}% (${required} rätt)</div>
+      </div>
+    </div>
+
+    ${wrongHtml}
+
+    <div class="imgCard">
+      <div class="muted" style="margin-bottom:8px;">Resultatbild</div>
+      <canvas id="resultCanvas" width="1200" height="630" style="display:none;"></canvas>
+      <img id="resultImg" alt="Resultatbild"/>
+      <div class="row" style="margin-top:10px;">
+        <a id="downloadLink" class="btn primary" download="resultat.png" href="#">Ladda ner bild</a>
+      </div>
+      <div class="muted" style="margin-top:10px;">
+        OBS: Inget skickas eller lagras i moln. Resultat finns bara på denna enhet i detta fönster.
+      </div>
+    </div>
+  `;
+
+  // Skapa resultatbild (lokalt)
+  const canvas = document.getElementById("resultCanvas");
+  const ctx = canvas.getContext("2d");
+
+  ctx.fillStyle = "#0b0c10";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const x=60, y=60, w=1080, h=510, r=28;
+  roundRect(ctx, x, y, w, h, r);
+  ctx.fillStyle = "#12141b"; ctx.fill();
+  ctx.lineWidth = 2; ctx.strokeStyle = "#24283a"; ctx.stroke();
+
+  ctx.fillStyle = "#eaeaea";
+  ctx.font = "700 42px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+  ctx.fillText("Provresultat", x+50, y+85);
+
+  ctx.fillStyle = "#a8b0c0";
+  ctx.font = "400 18px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+  ctx.fillText(`Datum: ${TODAY_SV()}`, x+50, y+120);
+
+  ctx.fillStyle = "#eaeaea";
+  ctx.font = "600 30px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+  ctx.fillText(`Namn: ${fullName}`, x+50, y+185);
+
+  ctx.font = "500 26px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+  ctx.fillText(`Antal rätt: ${correctCount} / ${total}`, x+50, y+250);
+  ctx.fillText(`Rättprocent: ${pct}%`, x+50, y+295);
+
+  ctx.font = "800 54px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+  ctx.fillStyle = passed ? "#16a34a" : "#ef4444";
+  ctx.fillText(passed ? "GODKÄND" : "UNDERKÄND", x+50, y+385);
+
+  ctx.fillStyle = "#a8b0c0";
+  ctx.font = "400 18px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+  ctx.fillText(`Krav: ${PASS_PERCENT}% (${required} rätt)`, x+50, y+420);
+
+  const dataUrl = canvas.toDataURL("image/png");
+  document.getElementById("resultImg").src = dataUrl;
+  document.getElementById("downloadLink").href = dataUrl;
+
+  resetFeedback();
+  nextBtn.disabled = true;
+  nextBtn.textContent = "Klar";
+  setProgress(total - 1, total);
+  barEl.style.width = "100%";
+
+  restartBtn.style.display = "inline-block";
+}
+
+document.getElementById("restartBtn").addEventListener("click", () => {
+  // Ladda om sidan -> ny slumpning
+  location.reload();
+});
+
+nextBtn.addEventListener("click", async () => {
+  if (idx < examQuestions.length - 1) {
+    idx++;
+    renderQuestion(idx);
+  } else {
+    await renderResult();
+  }
+});
+
+renderStart();
+</script>
+</body>
+</html>
